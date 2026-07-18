@@ -2,16 +2,18 @@
 FastAPI 라우터. 이음새 원칙 #1: 여기는 core 모듈 호출만 하고,
 파싱/타입판별/통계 로직 자체는 절대 여기 두지 않는다.
 """
-import sqlite3
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import psycopg
+from dotenv import load_dotenv
 from fastapi import Cookie, Depends, FastAPI, Form, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
+from storage3.utils import StorageException
 
 from app import auth, db, storage
 from app.core.aggregate import group_aggregate, pivot_table
@@ -40,6 +42,8 @@ from app.models import (
     UserPublic,
 )
 from app.session_store import SessionEntry, session_store
+
+load_dotenv()
 
 PREVIEW_ROWS = 20
 SPEC_MODEL_BY_KIND = {"chart": ChartSpec, "aggregate": AggregateSpec, "pivot": PivotSpec}
@@ -123,7 +127,7 @@ async def register(body: RegisterRequest, response: Response):
     created_at = datetime.now(timezone.utc).isoformat()
     try:
         db.create_user(user_id, body.username, password_hash, created_at)
-    except sqlite3.IntegrityError:
+    except psycopg.errors.UniqueViolation:
         # 사전 체크와 INSERT 사이의 경쟁 상태(동시 가입 요청) 방어선.
         raise AppError("이미 사용 중인 아이디입니다.", status_code=400)
 
@@ -173,7 +177,7 @@ async def upload(file: UploadFile, tags: str | None = Form(None), current_user: 
     db.insert_dataset(
         dataset_id,
         file.filename or "",
-        str(file_path),
+        file_path,
         df.shape[0],
         df.shape[1],
         columns,
@@ -246,11 +250,11 @@ def _load_or_reload_entry(dataset_id: str) -> SessionEntry:
     if row is None:
         raise AppError("데이터셋을 찾을 수 없습니다.", status_code=404)
 
-    file_path = Path(row["file_path"])
-    if not file_path.exists():
+    try:
+        content = storage.read_upload(row["file_path"])
+    except StorageException:
         raise AppError("원본 파일을 찾을 수 없습니다. 다시 업로드해주세요.", status_code=404)
 
-    content = storage.read_upload(file_path)
     df = parse_file(row["filename"], content)
     entry = SessionEntry(df=df, filename=row["filename"], columns=row["columns"])
     session_store.put(dataset_id, entry)
