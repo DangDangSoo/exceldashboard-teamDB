@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "excel2dashboard-teamdb",
+      "runtimeExecutable": "/Users/sooryongkai/Desktop/VibeCoding/study02/exceldashboard-teamDB/venv/bin/python",
+      "runtimeArgs": ["-m", "uvicorn", "app.main:app", "--reload", "--port", "8002"],
+      "port": 8002
+    }
+  ]
+}
