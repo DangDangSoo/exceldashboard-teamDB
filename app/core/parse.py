@@ -41,6 +41,14 @@ def parse_file(filename: str, content: bytes) -> pd.DataFrame:
     if df.shape[1] == 0:
         raise AppError("열을 찾을 수 없습니다. 1행에 헤더가 있는 파일인지 확인하세요.")
 
+    # 1행이 통째로 비어 있으면 pandas가 모든 열 이름을 "Unnamed: N"으로 채운다 —
+    # 진짜 헤더가 아래쪽 행에 있다는 신호이므로 조용히 잘못된 결과를 만들지 않고 명시적으로 알린다.
+    if all(str(c).startswith("Unnamed:") for c in df.columns):
+        raise AppError(
+            "1행에서 헤더를 찾지 못했습니다. 파일 상단에 빈 행이 있는지 확인하고, "
+            "1행에 헤더가 오도록 정리한 뒤 다시 업로드해주세요."
+        )
+
     # 완전 빈 행 방어: 지저분한 데이터에서 흔함
     df = df.dropna(how="all").reset_index(drop=True)
 
